@@ -1,0 +1,20 @@
+research_task:
+  description: >
+    Conduct a deep dive into {topic}. 
+    Focus on the most recent developments from the last 6 months.
+    Identify the key players, the main technological shifts, and 
+    any potential controversies.
+  expected_output: >
+    A bulleted list of the top 5 most significant findings regarding {topic}, 
+    including brief explanations for each.
+  agent: researcher
+
+reporting_task:
+  description: >
+    Using the research provided, write a 500-word blog post that 
+    highlights the future implications of {topic}. 
+    The tone should be professional yet optimistic.
+  expected_output: >
+    A complete blog post in markdown format with a catchy title, 
+    intro, body paragraphs, and a concluding summary.
+  agent: writer
