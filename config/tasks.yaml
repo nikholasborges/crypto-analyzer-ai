@@ -1,20 +1,70 @@
-research_task:
+crypto_research_task:
   description: >
-    Conduct a deep dive into {topic}. 
-    Focus on the most recent developments from the last 6 months.
-    Identify the key players, the main technological shifts, and 
-    any potential controversies.
-  expected_output: >
-    A bulleted list of the top 5 most significant findings regarding {topic}, 
-    including brief explanations for each.
-  agent: researcher
+    Gather a comprehensive market snapshot for {topic}. 
+    
+    1. Verify today's date using DateTool.
+    2. Collect current price, volume, and 24h range using BinanceMarketTool.
+    3. Retrieve the top 5 bid/ask levels from the BinanceOrderBookTool.
+    4. Search for the 3 most impactful news stories from the last 48 hours 
+       and the current Fear/Greed index reading.
+    5. Identify key Support and Resistance levels.
 
-reporting_task:
-  description: >
-    Using the research provided, write a 500-word blog post that 
-    highlights the future implications of {topic}. 
-    The tone should be professional yet optimistic.
+    Ensure all symbols use the USDT pair format (e.g. BTCUSDT). 
+    If market tools fail, prioritize the News and Sentiment search.
   expected_output: >
-    A complete blog post in markdown format with a catchy title, 
-    intro, body paragraphs, and a concluding summary.
-  agent: writer
+    A complete research brief wrapped in <research_data> tags containing:
+    - Verified Date
+    - Binance Market Stats (Price/Vol/Range)
+    - Top 5 Order Book levels
+    - 3 News Stories + Fear/Greed Index
+    - Support/Resistance levels
+  agent: crypto_researcher
+
+crypto_reporting_task:
+  description: >
+    You will receive a Market Brief inside <research_data> tags.
+    Your sole objective is to transform this into an 'Investor Intelligence Report'.
+
+    1. Extract and synthesize the research data.
+    2. Categorize findings into:
+       - Bullish Catalysts
+       - Bearish Risks
+       - Final Outlook
+    3. Provide a clear "Bottom Line" recommendation (Buy/Hold/Sell).
+    4. Format the report in clean Markdown, use the MarkdownFormatterTool to ensure professionalism.
+    
+    STRICT CONSTRAINTS:
+    - Filter out general news; keep only data affecting valuation.
+    - Don't format using JSON or any other structure. The output must be a polished Markdown report.
+
+  expected_output: >
+    A professional Markdown report with the following EXACT sections:
+    
+    ## Bottom Line
+    [Hold/Buy/Sell recommendation based on sentiment and levels]
+    
+    ---
+    ## Market Analysis
+    ### Current Price Context
+    - **Current [insert coin-pair] Price:** [Insert Tool Price]
+    - **24h Range:** [Insert High/Low]
+    
+    ### Order Book Dynamics
+    [A table showing Bids and Asks as provided by research]
+    
+    ---
+    ## News & Sentiment
+    ### Key Stories
+    [Bullet points of the top 3 news items from the last 48 hours]
+    
+    ### Fear/Greed Index
+    **Current Reading: [Value]/100**
+    
+    ---
+    ## Final Outlook
+    [Summary of risks and opportunities]
+    
+    ### Bottom Line Reiteration
+    [Closing statement]
+  agent: investment_writer
+  context: [crypto_research_task]

@@ -2,16 +2,21 @@ from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 
 from core.audit import AuditLogger
-from src.tools.news import NewsSearchTool
+from core.settings import get_settings
+from src.tools.date import DateTool
+from src.tools.duckduckgo import DuckDuckGoSearchTool
+from src.tools.markdown_formatter import MarkdownFormatterTool
+from src.tools.binance import BinanceMarketTool, BinanceOrderBookTool
 
 audit_logger = AuditLogger()
-
-LM_STUDIO_ADDR = "100.89.200.77:1234"
+settings = get_settings()
 
 local_llm = LLM(
-    base_url=f"http://{LM_STUDIO_ADDR}/v1",
+    base_url=settings.lm_studio_api_base,
     model="openai/deepseek/deepseek-r1-0528-qwen3-8b",
     api_key="lm-studio",
+    temperature=0.1,  # Keep it low for data tasks
+    timeout=300,  # Local models can be slow
 )
 
 
@@ -27,32 +32,43 @@ class ResearchCrew:
         self._execution_id = None
 
     @agent
-    def researcher(self) -> Agent:
+    def crypto_researcher(self) -> Agent:
         return Agent(
-            config=self.agents_config["researcher"],
-            tools=[NewsSearchTool()],
+            config=self.agents_config["crypto_researcher"],
+            tools=[
+                DateTool(),
+                DuckDuckGoSearchTool(),
+                BinanceMarketTool(),
+                BinanceOrderBookTool(),
+            ],
             llm=local_llm,
             verbose=True,
-        )
-
-    @task
-    def research_task(self) -> Task:
-        return Task(
-            config=self.tasks_config["research_task"],
-        )
-
-    @task
-    def reporting_task(self) -> Task:
-        return Task(
-            config=self.tasks_config["reporting_task"],
+            max_iter=5,
+            max_retry_limit=3,
+            cache=False,
+            respect_context_window=True,
         )
 
     @agent
-    def writer(self) -> Agent:
+    def investment_writer(self) -> Agent:
         return Agent(
-            config=self.agents_config["writer"],
+            config=self.agents_config["investment_writer"],
+            tools=[MarkdownFormatterTool()],
             llm=local_llm,
             verbose=True,
+        )
+
+    @task
+    def crypto_research_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["crypto_research_task"],
+        )
+
+    @task
+    def crypto_reporting_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["crypto_reporting_task"],
+            context=[self.crypto_research_task()],
         )
 
     @crew
@@ -108,6 +124,9 @@ class ResearchCrew:
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
+            task_callback=lambda output: print(
+                f"Task finished with: {output.raw[:50]}..."
+            ),
             step_callback=on_step_callback,
             output_log_file="logs/crew_execution.json",
         )

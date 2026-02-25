@@ -2,6 +2,7 @@
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import uuid4
@@ -20,9 +21,12 @@ from core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Thread pool for non-blocking Redis operations
+_AUDIT_THREAD_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="audit-")
+
 
 class AuditLogger:
-    """Centralized audit logging for crew executions."""
+    """Centralized audit logging for crew executions (non-blocking)."""
 
     def __init__(self):
         self.settings = get_settings()
@@ -32,7 +36,7 @@ class AuditLogger:
         self, topic: str, agent_names: list[str], task_count: int
     ) -> str:
         """
-        Log the start of a crew execution.
+        Log the start of a crew execution (non-blocking).
 
         Args:
             topic: Research topic or input
@@ -53,8 +57,9 @@ class AuditLogger:
             agent_names=agent_names,
             task_count=task_count,
         )
-        self._save_event(event)
-        logger.info(f"Audit: Crew execution started - ID: {self.current_execution_id}")
+        # Submit to background thread (non-blocking)
+        self._save_event_async(event)
+        logger.debug(f"Audit: Crew execution started - ID: {self.current_execution_id}")
         return self.current_execution_id
 
     def end_execution(
@@ -65,7 +70,7 @@ class AuditLogger:
         duration_seconds: Optional[float] = None,
     ) -> None:
         """
-        Log the end of a crew execution.
+        Log the end of a crew execution (non-blocking).
 
         Args:
             execution_id: The execution ID to end
@@ -87,8 +92,9 @@ class AuditLogger:
             success=success,
             error_message=error_message,
         )
-        self._save_event(event)
-        logger.info(
+        # Submit to background thread (non-blocking)
+        self._save_event_async(event)
+        logger.debug(
             f"Audit: Crew execution ended - ID: {execution_id}, Success: {success}"
         )
 
@@ -130,7 +136,8 @@ class AuditLogger:
             token_usage=token_usage or {},
             duration_seconds=duration_seconds,
         )
-        self._save_event(event)
+        # Non-blocking async save
+        self._save_event_async(event)
 
     def log_tool_call(
         self,
@@ -170,7 +177,8 @@ class AuditLogger:
             error_message=error_message,
             success=success,
         )
-        self._save_event(event)
+        # Non-blocking async save
+        self._save_event_async(event)
 
     def log_task_completion(
         self,
@@ -214,7 +222,8 @@ class AuditLogger:
             success=success,
             error_message=error_message,
         )
-        self._save_event(event)
+        # Non-blocking async save
+        self._save_event_async(event)
 
     def log_error(
         self,
@@ -248,14 +257,15 @@ class AuditLogger:
             context=context,
             recoverable=recoverable,
         )
-        self._save_event(event)
+        # Non-blocking async save
+        self._save_event_async(event)
         logger.error(
             f"Audit: Error logged - Type: {error_type}, Message: {error_message}"
         )
 
     def _save_event(self, event: AuditEvent) -> None:
         """
-        Save an audit event to Redis.
+        Save an audit event to Redis (blocking version, only for critical operations).
 
         Args:
             event: The audit event to save
@@ -270,10 +280,26 @@ class AuditLogger:
             # Calculate TTL based on retention policy
             ttl = self.settings.audit_retention_days * 24 * 60 * 60
 
-            # Store in Redis
+            # Store in Redis with timeout protection
             set_audit_data(key, event_json, ttl=ttl)
         except Exception as e:
-            logger.error(f"Failed to save audit event: {e}")
+            # Fail silently to prevent audit errors from breaking crew execution
+            logger.debug(f"Failed to save audit event: {e}")
+
+    def _save_event_async(self, event: AuditEvent) -> None:
+        """
+        Submit an audit event save to background thread pool (non-blocking).
+
+        This prevents long Redis operations from blocking the LLM's Chain of Thought.
+
+        Args:
+            event: The audit event to save
+        """
+        if not self.settings.audit_enabled:
+            return
+
+        # Submit to thread pool - returns immediately
+        _AUDIT_THREAD_POOL.submit(self._save_event, event)
 
     @staticmethod
     def _serialize_event(event: AuditEvent) -> str:

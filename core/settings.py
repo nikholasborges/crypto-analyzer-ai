@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     redis_url: str
 
     google_api_key: str
-    mediastack_api_key: str
+    google_search_engine_id: str = None
 
     # Audit Logging
     audit_enabled: bool = True
@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     openai_api_base: str
     openai_api_key: str
+
+    lm_studio_api_base: str = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

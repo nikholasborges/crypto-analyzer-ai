@@ -11,7 +11,7 @@ from core.settings import get_settings
 
 @lru_cache(maxsize=1)
 def get_redis_pool() -> ConnectionPool:
-    """Get a singleton Redis connection pool."""
+    """Get a singleton Redis connection pool with timeout protection."""
     settings = get_settings()
     return ConnectionPool(
         host=settings.redis_host,
@@ -19,12 +19,9 @@ def get_redis_pool() -> ConnectionPool:
         db=settings.redis_db,
         decode_responses=True,
         socket_connect_timeout=5,
-        socket_keepalive=True,
-        socket_keepalive_options={
-            1: 1,  # TCP_KEEPIDLE
-            2: 1,  # TCP_KEEPINTVL
-            3: 3,  # TCP_KEEPCNT
-        },
+        socket_keepalive=False,
+        retry_on_timeout=True,
+        health_check_interval=30,
     )
 
 
@@ -45,7 +42,7 @@ def test_redis_connection() -> bool:
 
 def set_audit_data(key: str, value: str, ttl: Optional[int] = None) -> bool:
     """
-    Store audit data in Redis.
+    Store audit data in Redis with timeout protection.
 
     Args:
         key: Redis key (e.g., "audit:exec_id:event_type:event_id")
@@ -57,11 +54,17 @@ def set_audit_data(key: str, value: str, ttl: Optional[int] = None) -> bool:
     """
     try:
         client = get_redis_client()
+
         if ttl:
+            # SETEX with TTL
             client.setex(key, ttl, value)
         else:
+            # SET without TTL
             client.set(key, value)
         return True
+    except (redis.TimeoutError, redis.ConnectionError):
+        # Fail gracefully - audit shouldn't break crew execution
+        return False
     except Exception:
         return False
 
